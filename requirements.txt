@@ -1,0 +1,8 @@
+openai>=1.0.0
+azure-cognitiveservices-speech>=1.35.0
+cartesia>=1.0.0
+aiohttp>=3.9.0
+sounddevice>=0.4.6
+pyaudio>=0.2.14
+numpy>=1.24.0
+python-dotenv>=1.0.0

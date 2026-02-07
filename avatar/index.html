@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kavita — AI Receptionist</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0f0f1a;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: #e0e0e0;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Layout ─────────────────────────────────────────── */
+  .left-col {
+    width: 340px; min-width: 340px;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 16px;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    position: relative;
+    overflow-y: auto;
+    gap: 14px;
+  }
+  .left-col::-webkit-scrollbar { width: 4px; }
+  .left-col::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+  .right-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .bg-glow {
+    position: absolute; width: 350px; height: 350px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%);
+    top: 20%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;
+  }
+
+  /* ── Avatar ─────────────────────────────────────────── */
+  .avatar-ring {
+    width: 180px; height: 180px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: conic-gradient(from 0deg, #6366f1, #8b5cf6, #a78bfa, #6366f1);
+    padding: 3px; opacity: 0.3;
+    transition: opacity 0.4s, transform 0.4s; z-index: 1; flex-shrink: 0;
+  }
+  .avatar-ring.speaking { opacity: 1; animation: ring-pulse 1.5s ease-in-out infinite; }
+  .avatar-ring.listening { opacity: 0.6; background: conic-gradient(from 0deg, #10b981, #34d399, #6ee7b7, #10b981); }
+  @keyframes ring-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.03)} }
+  .avatar-inner {
+    width: 170px; height: 170px; border-radius: 50%;
+    background: #1a1a2e; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  svg.avatar-svg { width: 165px; height: 165px; }
+
+  .agent-name { font-size: 18px; font-weight: 600; color: #c4b5fd; z-index: 1; }
+  .status-line {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: #888; z-index: 1;
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #444; transition: background 0.3s;
+  }
+  .status-dot.speaking { background: #6366f1; animation: dot-blink 0.8s infinite; }
+  .status-dot.listening { background: #10b981; animation: dot-blink 1.2s infinite; }
+  @keyframes dot-blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── User Info Card (left col, shown after identify) ── */
+  .user-card {
+    width: 100%; z-index: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; padding: 14px 16px;
+    display: none;
+    animation: fade-in 0.4s ease;
+  }
+  .user-card.visible { display: block; }
+  .user-card-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .user-avatar-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .user-name { font-size: 15px; font-weight: 600; color: #e0e0e0; }
+  .user-id-badge {
+    font-size: 10px; color: #a78bfa; background: rgba(167,139,250,0.12);
+    padding: 2px 8px; border-radius: 6px; font-family: monospace; font-weight: 600;
+  }
+  .user-appt-list { margin-top: 8px; }
+  .user-appt-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; margin: 4px 0;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px; font-size: 12px;
+  }
+  .uai-date { color: #a78bfa; font-weight: 600; min-width: 80px; }
+  .uai-time { color: #34d399; min-width: 65px; }
+  .uai-id { color: #666; font-family: monospace; font-size: 10px; }
+  .uai-purpose { color: #888; font-size: 11px; }
+  .user-no-appts { color: #555; font-size: 12px; font-style: italic; padding: 4px 0; }
+
+  /* ── Summary Overlay ────────────────────────────────── */
+  .summary-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(15,15,26,0.92);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .summary-overlay.visible { display: flex; }
+  .summary-box {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 32px 36px;
+    max-width: 560px; width: 90%;
+    animation: scale-in 0.4s ease;
+  }
+  @keyframes scale-in { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
+  .summary-title {
+    font-size: 18px; font-weight: 700; color: #c4b5fd;
+    margin-bottom: 6px; display: flex; align-items: center; gap: 8px;
+  }
+  .summary-subtitle { font-size: 12px; color: #666; margin-bottom: 16px; }
+  .summary-text {
+    font-size: 14px; line-height: 1.7; color: #ccc;
+    white-space: pre-line;
+  }
+  .summary-close {
+    margin-top: 20px; padding: 8px 24px;
+    background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.3);
+    color: #a78bfa; border-radius: 10px; font-size: 13px;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .summary-close:hover { background: rgba(99,102,241,0.35); }
+
+  /* ── Right panels ───────────────────────────────────── */
+  .panel-header {
+    padding: 12px 20px; font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px; color: #666;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-shrink: 0;
+  }
+
+  .transcript-panel {
+    flex: 1; overflow-y: auto; padding: 10px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    min-height: 120px;
+  }
+  .transcript-panel::-webkit-scrollbar { width: 4px; }
+  .transcript-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .transcript-line { font-size: 13px; line-height: 1.6; margin-bottom: 6px; animation: fade-in 0.3s ease; }
+  .role { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .role.agent { color: #a78bfa; }
+  .role.user { color: #34d399; }
+  .text { color: #ccc; margin-left: 4px; }
+  @keyframes fade-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+
+  .tools-panel {
+    max-height: 45%; overflow-y: auto; padding: 10px 20px;
+    background: rgba(255,255,255,0.015);
+  }
+  .tools-panel::-webkit-scrollbar { width: 4px; }
+  .tools-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+  .tool-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; padding: 10px 14px;
+    margin-bottom: 8px; animation: slide-in 0.3s ease;
+  }
+  @keyframes slide-in { from{opacity:0;transform:translateX(8px)} to{opacity:1;transform:translateX(0)} }
+  .tool-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .tool-icon {
+    width: 26px; height: 26px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+  }
+  .tool-icon.identify { background: rgba(59,130,246,0.2); }
+  .tool-icon.register { background: rgba(16,185,129,0.2); }
+  .tool-icon.fetch { background: rgba(234,179,8,0.2); }
+  .tool-icon.book { background: rgba(16,185,129,0.2); }
+  .tool-icon.retrieve { background: rgba(168,85,247,0.2); }
+  .tool-icon.cancel { background: rgba(239,68,68,0.2); }
+  .tool-icon.modify { background: rgba(251,146,60,0.2); }
+  .tool-icon.end { background: rgba(107,114,128,0.2); }
+  .tool-name { font-size: 12px; font-weight: 600; }
+  .tool-name.identify { color: #60a5fa; } .tool-name.register { color: #34d399; }
+  .tool-name.fetch { color: #fbbf24; } .tool-name.book { color: #34d399; }
+  .tool-name.retrieve { color: #c084fc; } .tool-name.cancel { color: #f87171; }
+  .tool-name.modify { color: #fb923c; } .tool-name.end { color: #9ca3af; }
+  .tool-status {
+    margin-left: auto; font-size: 9px; font-weight: 600;
+    padding: 2px 7px; border-radius: 5px; text-transform: uppercase;
+  }
+  .tool-status.success { background: rgba(16,185,129,0.15); color: #34d399; }
+  .tool-status.error { background: rgba(239,68,68,0.15); color: #f87171; }
+  .tool-status.info { background: rgba(99,102,241,0.15); color: #818cf8; }
+  .tool-body { font-size: 11px; color: #999; line-height: 1.5; }
+  .tool-body .kv { margin: 2px 0; }
+  .tool-body .k { color: #666; }
+  .tool-body .v { color: #bbb; }
+
+  .appt-mini {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 7px; padding: 6px 10px; margin: 4px 0;
+    display: flex; gap: 10px; align-items: center; font-size: 11px;
+  }
+  .appt-mini .ad { color: #a78bfa; font-weight: 600; min-width: 80px; }
+  .appt-mini .at { color: #34d399; min-width: 65px; }
+  .appt-mini .ai { color: #555; font-family: monospace; font-size: 10px; }
+
+  .slot-grid { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0; }
+  .slot-chip { font-size: 10px; padding: 2px 6px; border-radius: 5px; font-family: monospace; }
+  .slot-chip.available { background: rgba(16,185,129,0.1); color: #34d399; }
+  .slot-chip.booked { background: rgba(239,68,68,0.1); color: #f87171; text-decoration: line-through; }
+
+  .connection-badge {
+    position: absolute; top: 10px; left: 10px;
+    font-size: 9px; padding: 2px 8px; border-radius: 8px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    color: #666; z-index: 10;
+  }
+  .connection-badge.connected { color: #10b981; border-color: rgba(16,185,129,0.3); }
+  .connection-badge.disconnected { color: #ef4444; border-color: rgba(239,68,68,0.3); }
+
+  /* ── Start Overlay ──────────────────────────────────── */
+  .start-overlay {
+    position: fixed; inset: 0;
+    background: rgba(15,15,26,0.95);
+    backdrop-filter: blur(16px);
+    z-index: 200;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 24px;
+    transition: opacity 0.5s ease;
+  }
+  .start-overlay.hidden {
+    opacity: 0; pointer-events: none;
+  }
+  .start-title {
+    font-size: 24px; font-weight: 700; color: #c4b5fd;
+  }
+  .start-subtitle {
+    font-size: 14px; color: #666; max-width: 320px; text-align: center; line-height: 1.5;
+  }
+  .start-btn {
+    width: 140px; height: 140px; border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border: none; cursor: pointer;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px;
+    color: white; font-size: 15px; font-weight: 600;
+    box-shadow: 0 0 40px rgba(99,102,241,0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .start-btn:hover {
+    transform: scale(1.08);
+    box-shadow: 0 0 60px rgba(99,102,241,0.5);
+  }
+  .start-btn:active { transform: scale(0.96); }
+  .start-btn .mic-icon { font-size: 36px; }
+  .start-waiting {
+    font-size: 13px; color: #888; display: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- START OVERLAY -->
+<div class="start-overlay" id="startOverlay">
+  <div class="start-title">Kavita — AI Receptionist</div>
+  <div class="start-subtitle">Click the button below to start your conversation. Kavita will help you book, check, or manage appointments.</div>
+  <button class="start-btn" id="startBtn" onclick="startConversation()">
+    <span class="mic-icon">🎙️</span>
+    <span>Start</span>
+  </button>
+  <div class="start-waiting" id="startWaiting">Connecting...</div>
+</div>
+
+<div class="left-col">
+  <div class="bg-glow"></div>
+  <div class="connection-badge disconnected" id="connBadge">● Disconnected</div>
+
+  <div class="avatar-ring" id="avatarRing">
+    <div class="avatar-inner">
+      <svg class="avatar-svg" viewBox="0 0 260 260">
+        <defs>
+          <radialGradient id="skinGrad" cx="50%" cy="45%" r="50%">
+            <stop offset="0%" stop-color="#e8b89d"/><stop offset="100%" stop-color="#d4956b"/>
+          </radialGradient>
+          <linearGradient id="hairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1a1a2e"/><stop offset="100%" stop-color="#2d1b4e"/>
+          </linearGradient>
+          <linearGradient id="lipGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#c2707a"/><stop offset="100%" stop-color="#a85060"/>
+          </linearGradient>
+        </defs>
+        <rect x="110" y="190" width="40" height="40" rx="8" fill="url(#skinGrad)" opacity="0.9"/>
+        <ellipse cx="130" cy="240" rx="80" ry="30" fill="#6366f1" opacity="0.25"/>
+        <ellipse cx="130" cy="242" rx="70" ry="24" fill="#1a1a2e"/>
+        <ellipse cx="130" cy="108" rx="82" ry="90" fill="url(#hairGrad)"/>
+        <ellipse cx="130" cy="120" rx="65" ry="72" fill="url(#skinGrad)"/>
+        <path d="M65,100 Q65,45 130,40 Q195,45 195,100 Q190,70 170,60 Q150,52 130,55 Q110,52 90,60 Q70,70 65,100Z" fill="url(#hairGrad)"/>
+        <path d="M68,105 Q60,130 65,165 Q70,150 75,130 Q72,115 68,105Z" fill="url(#hairGrad)" opacity="0.8"/>
+        <path d="M192,105 Q200,130 195,165 Q190,150 185,130 Q188,115 192,105Z" fill="url(#hairGrad)" opacity="0.8"/>
+        <path d="M95,98 Q107,92 118,96" stroke="#5a3825" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        <path d="M142,96 Q153,92 165,98" stroke="#5a3825" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        <g><ellipse cx="107" cy="112" rx="11" ry="10" fill="white"/>
+          <circle cx="108" cy="112" r="5.5" fill="#3b2414"/>
+          <circle cx="109.5" cy="110.5" r="2" fill="white" opacity="0.7"/>
+          <ellipse cx="107" cy="112" rx="12" ry="0" fill="url(#skinGrad)" id="leftLid"/>
+        </g>
+        <g><ellipse cx="153" cy="112" rx="11" ry="10" fill="white"/>
+          <circle cx="152" cy="112" r="5.5" fill="#3b2414"/>
+          <circle cx="153.5" cy="110.5" r="2" fill="white" opacity="0.7"/>
+          <ellipse cx="153" cy="112" rx="12" ry="0" fill="url(#skinGrad)" id="rightLid"/>
+        </g>
+        <path d="M128,120 Q130,132 126,136 Q130,138 134,136 Q130,132 132,120" stroke="#c4956b" stroke-width="1" fill="none" opacity="0.5"/>
+        <g id="mouthGroup" transform="translate(130, 152)">
+          <path id="mouthClosed" d="M-14,0 Q-7,6 0,7 Q7,6 14,0" stroke="url(#lipGrad)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <ellipse id="mouthOpen" cx="0" cy="2" rx="0" ry="0" fill="#5a2030" opacity="0"/>
+          <path id="upperLip" d="M-14,0 Q-7,-2 0,-2 Q7,-2 14,0" stroke="url(#lipGrad)" stroke-width="0" fill="url(#lipGrad)" opacity="0"/>
+        </g>
+        <circle cx="90" cy="130" r="12" fill="#e8a090" opacity="0.15"/>
+        <circle cx="170" cy="130" r="12" fill="#e8a090" opacity="0.15"/>
+        <circle cx="130" cy="88" r="3" fill="#c0392b" opacity="0.8"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="agent-name">Kavita</div>
+  <div class="status-line">
+    <div class="status-dot idle" id="statusDot"></div>
+    <span id="statusText">Idle</span>
+  </div>
+
+  <!-- User info card (appears after identify) -->
+  <div class="user-card" id="userCard">
+    <div class="user-card-header">
+      <div class="user-avatar-icon">👤</div>
+      <div>
+        <div class="user-name" id="userName">—</div>
+        <div class="user-id-badge" id="userIdBadge">ID: —</div>
+      </div>
+    </div>
+    <div id="userApptLabel" style="font-size:11px;color:#888;margin-bottom:4px;">Appointments</div>
+    <div class="user-appt-list" id="userApptList">
+      <div class="user-no-appts">No appointments</div>
+    </div>
+  </div>
+</div>
+
+<!-- RIGHT -->
+<div class="right-col">
+  <div class="panel-header">💬 Conversation</div>
+  <div class="transcript-panel" id="transcript"></div>
+  <div class="panel-header">🔧 Tool Calls</div>
+  <div class="tools-panel" id="toolsPanel">
+    <div style="color:#444;font-size:11px;text-align:center;padding:16px;">
+      Tool calls appear here as they happen
+    </div>
+  </div>
+</div>
+
+<!-- Summary overlay -->
+<div class="summary-overlay" id="summaryOverlay">
+  <div class="summary-box">
+    <div class="summary-title">📋 Call Summary</div>
+    <div class="summary-subtitle">Generated after conversation ended</div>
+    <div class="summary-text" id="summaryText">Loading...</div>
+    <button class="summary-close" onclick="document.getElementById('summaryOverlay').classList.remove('visible')">Close</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const ring = document.getElementById('avatarRing');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const connBadge = document.getElementById('connBadge');
+  const transcript = document.getElementById('transcript');
+  const toolsPanel = document.getElementById('toolsPanel');
+  const mouthClosed = document.getElementById('mouthClosed');
+  const mouthOpen = document.getElementById('mouthOpen');
+  const upperLip = document.getElementById('upperLip');
+  const leftLid = document.getElementById('leftLid');
+  const rightLid = document.getElementById('rightLid');
+
+  const userCard = document.getElementById('userCard');
+  const userName = document.getElementById('userName');
+  const userIdBadge = document.getElementById('userIdBadge');
+  const userApptList = document.getElementById('userApptList');
+  const userApptLabel = document.getElementById('userApptLabel');
+  const summaryOverlay = document.getElementById('summaryOverlay');
+  const summaryText = document.getElementById('summaryText');
+  const startOverlay = document.getElementById('startOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const startWaiting = document.getElementById('startWaiting');
+
+  let currentEnergy = 0, targetEnergy = 0, toolsFirstCall = true;
+  let wsRef = null;  // global WS reference for startConversation()
+
+  // Expose start function globally
+  window.startConversation = function() {
+    if (wsRef && wsRef.readyState === WebSocket.OPEN) {
+      wsRef.send(JSON.stringify({action: 'start'}));
+      startBtn.style.display = 'none';
+      startWaiting.style.display = 'block';
+      startWaiting.textContent = 'Starting...';
+    } else {
+      startWaiting.style.display = 'block';
+      startWaiting.textContent = 'Not connected yet, please wait...';
+    }
+  };
+
+  const TOOL_META = {
+    identify_user:         { icon: '👤', label: 'Identify User',       css: 'identify' },
+    register_user:         { icon: '🆕', label: 'Register User',       css: 'register' },
+    fetch_slots:           { icon: '📅', label: 'Fetch Slots',         css: 'fetch' },
+    book_appointment:      { icon: '✅', label: 'Book Appointment',    css: 'book' },
+    retrieve_appointments: { icon: '📋', label: 'Retrieve Appts',     css: 'retrieve' },
+    cancel_appointment:    { icon: '❌', label: 'Cancel Appt',        css: 'cancel' },
+    modify_appointment:    { icon: '✏️', label: 'Modify Appt',        css: 'modify' },
+    end_conversation:      { icon: '👋', label: 'End Call',            css: 'end' },
+  };
+
+  // ── WebSocket ─────────────────────────────────────────
+  function connect() {
+    const p = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${p}://${location.host}/ws`);
+    wsRef = ws;
+    ws.onopen = () => {
+      connBadge.textContent='● Connected';
+      connBadge.className='connection-badge connected';
+    };
+    ws.onclose = () => {
+      connBadge.textContent='● Disconnected';
+      connBadge.className='connection-badge disconnected';
+      wsRef = null;
+      setTimeout(connect,2000);
+    };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (e) => { try{handleEvent(JSON.parse(e.data))}catch(x){} };
+  }
+
+  function handleEvent(e) {
+    switch(e.type) {
+      case 'speaking_start':
+        ring.className='avatar-ring speaking';
+        statusDot.className='status-dot speaking';
+        statusText.textContent='Speaking';
+        if(e.text) addTranscript('agent',e.text);
+        break;
+      case 'audio_energy':
+        targetEnergy=Math.min(1,Math.max(0,e.energy||0));
+        break;
+      case 'speaking_end':
+        targetEnergy=0;
+        ring.className='avatar-ring';
+        statusDot.className='status-dot idle';
+        statusText.textContent='Idle';
+        break;
+      case 'user_speaking':
+        if(e.text) addTranscript('user',e.text);
+        break;
+      case 'listening':
+        ring.className='avatar-ring listening';
+        statusDot.className='status-dot listening';
+        statusText.textContent='Listening';
+        break;
+      case 'tool_call':
+        renderToolCall(e);
+        // If identify_user found → show user card
+        if(e.function==='identify_user' && e.result && e.result.status==='found') {
+          showUserCard(e.result.user, e.result.active_appointments);
+        }
+        if(e.function==='register_user' && e.result && e.result.status==='registered') {
+          showUserCard({name:e.result.name, user_id:e.result.user_id}, []);
+        }
+        // If book/cancel/modify, refresh user appts from tool result if available
+        if(['book_appointment','cancel_appointment','modify_appointment'].includes(e.function) && e.result) {
+          refreshUserApptFromBooking(e);
+        }
+        break;
+      case 'summary':
+        summaryText.textContent = e.text || 'No summary available.';
+        summaryOverlay.classList.add('visible');
+        break;
+      case 'conversation_started':
+        startOverlay.classList.add('hidden');
+        break;
+      case 'shutdown':
+        statusText.textContent='Call ended';
+        statusDot.className='status-dot idle';
+        ring.className='avatar-ring';
+        break;
+    }
+  }
+
+  // ── User Card ─────────────────────────────────────────
+  let currentUserId = null;
+
+  function showUserCard(user, appointments) {
+    currentUserId = user.user_id;
+    userName.textContent = user.name || 'Unknown';
+    userIdBadge.textContent = 'ID: ' + user.user_id;
+    renderUserAppts(appointments || []);
+    userCard.classList.add('visible');
+  }
+
+  function renderUserAppts(appts) {
+    if(!appts.length) {
+      userApptList.innerHTML = '<div class="user-no-appts">No active appointments</div>';
+      userApptLabel.textContent = 'Appointments (0)';
+      return;
+    }
+    userApptLabel.textContent = `Appointments (${appts.length})`;
+    userApptList.innerHTML = appts.map(a => `
+      <div class="user-appt-item">
+        <span class="uai-date">📅 ${a.date}</span>
+        <span class="uai-time">🕐 ${a.time}</span>
+        <span class="uai-id">#${a.appointment_id}</span>
+        ${a.purpose ? `<span class="uai-purpose">${a.purpose}</span>` : ''}
+      </div>
+    `).join('');
+  }
+
+  function refreshUserApptFromBooking(e) {
+    // After a book/cancel/modify, we don't have the full list.
+    // We add/update the user card optimistically.
+    if(!currentUserId) return;
+    const r = e.result;
+    if(e.function === 'book_appointment' && r.status === 'booked') {
+      // Add to list
+      const items = userApptList.querySelectorAll('.user-appt-item');
+      const newItem = document.createElement('div');
+      newItem.className = 'user-appt-item';
+      newItem.innerHTML = `
+        <span class="uai-date">📅 ${r.date}</span>
+        <span class="uai-time">🕐 ${r.time}</span>
+        <span class="uai-id">#${r.appointment_id}</span>
+        ${r.purpose ? `<span class="uai-purpose">${r.purpose}</span>` : ''}
+      `;
+      // Clear "no appointments" if present
+      const noAppt = userApptList.querySelector('.user-no-appts');
+      if(noAppt) noAppt.remove();
+      userApptList.appendChild(newItem);
+      const count = userApptList.querySelectorAll('.user-appt-item').length;
+      userApptLabel.textContent = `Appointments (${count})`;
+    }
+    if(e.function === 'cancel_appointment' && r.status === 'cancelled') {
+      // Remove from list by matching appointment_id
+      const items = userApptList.querySelectorAll('.user-appt-item');
+      items.forEach(item => {
+        if(item.textContent.includes(r.appointment_id)) {
+          item.style.opacity = '0.3';
+          item.style.textDecoration = 'line-through';
+        }
+      });
+    }
+  }
+
+  // ── Transcript ────────────────────────────────────────
+  function addTranscript(role,text) {
+    const d=document.createElement('div');
+    d.className='transcript-line';
+    d.innerHTML=`<span class="role ${role}">${role==='agent'?'Agent':'You'}</span> <span class="text">${esc(text)}</span>`;
+    transcript.appendChild(d);
+    transcript.scrollTop=transcript.scrollHeight;
+    while(transcript.children.length>30) transcript.removeChild(transcript.firstChild);
+  }
+
+  // ── Tool Cards ────────────────────────────────────────
+  function renderToolCall(e) {
+    if(toolsFirstCall){toolsPanel.innerHTML='';toolsFirstCall=false;}
+    const meta=TOOL_META[e.function]||{icon:'🔧',label:e.function,css:'end'};
+    const r=e.result||{};
+    const st=r.status||'ok';
+    const sc=['conflict','error','not_found','invalid_slot','already_cancelled','already_booked'].includes(st)?'error':
+             ['ok','found','booked','cancelled','modified','registered','ended'].includes(st)?'success':'info';
+
+    let body='';
+    if(e.function==='identify_user') {
+      body+=kv('User ID',(e.arguments||{}).user_id);
+      if(r.status==='found'&&r.user) {
+        body+=kv('Name',r.user.name);
+        body+=kv('Active Appts',(r.active_appointments||[]).length);
+        (r.active_appointments||[]).forEach(a=>{body+=apptMini(a)});
+      } else { body+=`<div style="color:#fbbf24;font-size:11px">${r.message||'Not found'}</div>`; }
+    }
+    else if(e.function==='register_user') {
+      body+=kv('Name',r.name);
+      body+=kv('New ID',`<code style="color:#34d399;font-weight:700">${r.user_id}</code>`);
+    }
+    else if(e.function==='fetch_slots') {
+      body+=kv('Date',(e.arguments||{}).date);
+      body+=kv('Available',`${r.available_count||0} / ${r.total_slots||0}`);
+      if(r.available_slots) {
+        body+='<div class="slot-grid">';
+        r.available_slots.slice(0,18).forEach(s=>{body+=`<span class="slot-chip available">${s}</span>`});
+        (r.booked_slots||[]).slice(0,6).forEach(s=>{body+=`<span class="slot-chip booked">${s}</span>`});
+        if(r.available_slots.length>18) body+=`<span class="slot-chip available">+${r.available_slots.length-18}</span>`;
+        body+='</div>';
+      }
+    }
+    else if(e.function==='book_appointment') {
+      body+=kv('Name',r.name||(e.arguments||{}).name);
+      body+=kv('Date',r.date||(e.arguments||{}).date);
+      body+=kv('Time',r.time||(e.arguments||{}).time_slot);
+      if(r.purpose)body+=kv('Purpose',r.purpose);
+      if(r.appointment_id)body+=kv('Appt ID',`<code>${r.appointment_id}</code>`);
+      if(r.suggested_alternatives){
+        body+='<div style="color:#fbbf24;font-size:10px;margin-top:3px">Alternatives:</div><div class="slot-grid">';
+        r.suggested_alternatives.forEach(s=>{body+=`<span class="slot-chip available">${s}</span>`});
+        body+='</div>';
+      }
+    }
+    else if(e.function==='retrieve_appointments') {
+      body+=kv('User ID',(e.arguments||{}).user_id);
+      body+=kv('Active',r.total_active||0)+kv('Cancelled',r.total_cancelled||0);
+      (r.active_appointments||[]).forEach(a=>{body+=apptMini(a)});
+    }
+    else if(e.function==='cancel_appointment') {
+      body+=kv('Appt ID',`<code>${(e.arguments||{}).appointment_id}</code>`);
+      if(r.date)body+=kv('Was',`${r.date} at ${r.time}`);
+    }
+    else if(e.function==='modify_appointment') {
+      body+=kv('Appt ID',`<code>${(e.arguments||{}).appointment_id}</code>`);
+      if(r.old_date)body+=kv('From',`${r.old_date} ${r.old_time}`);
+      if(r.new_date)body+=kv('To',`${r.new_date} ${r.new_time}`);
+    }
+    else if(e.function==='end_conversation') {
+      body='<div style="color:#9ca3af;font-size:11px">Call ended</div>';
+    }
+
+    const card=document.createElement('div');
+    card.className='tool-card';
+    card.innerHTML=`
+      <div class="tool-card-header">
+        <div class="tool-icon ${meta.css}">${meta.icon}</div>
+        <div class="tool-name ${meta.css}">${meta.label}</div>
+        <div class="tool-status ${sc}">${st}</div>
+      </div>
+      <div class="tool-body">${body}</div>
+    `;
+    toolsPanel.appendChild(card);
+    toolsPanel.scrollTop=toolsPanel.scrollHeight;
+  }
+
+  function kv(k,v){return `<div class="kv"><span class="k">${k}:</span> <span class="v">${v}</span></div>`}
+  function apptMini(a){return `<div class="appt-mini"><span class="ad">📅 ${a.date}</span><span class="at">🕐 ${a.time}</span><span class="ai">#${a.appointment_id}</span></div>`}
+  function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+  // ── Mouth ─────────────────────────────────────────────
+  function animateMouth(){
+    currentEnergy+=(targetEnergy-currentEnergy)*0.3;
+    if(currentEnergy<0.02){
+      mouthClosed.setAttribute('stroke-width','2.5');
+      mouthOpen.setAttribute('rx','0');mouthOpen.setAttribute('ry','0');mouthOpen.setAttribute('opacity','0');
+      upperLip.setAttribute('opacity','0');upperLip.setAttribute('stroke-width','0');
+    }else{
+      mouthClosed.setAttribute('stroke-width','0');
+      mouthOpen.setAttribute('rx',4+currentEnergy*10);mouthOpen.setAttribute('ry',2+currentEnergy*9);
+      mouthOpen.setAttribute('opacity','1');upperLip.setAttribute('opacity','1');upperLip.setAttribute('stroke-width','1.5');
+    }
+    requestAnimationFrame(animateMouth);
+  }
+  function blink(){
+    leftLid.setAttribute('ry','11');rightLid.setAttribute('ry','11');
+    setTimeout(()=>{leftLid.setAttribute('ry','0');rightLid.setAttribute('ry','0')},120);
+    setTimeout(blink,2000+Math.random()*3000);
+  }
+  let bp=0;
+  function breathe(){
+    bp+=0.03;
+    const svg=document.querySelector('.avatar-svg');
+    if(svg)svg.style.transform=`translateY(${Math.sin(bp)*1.5}px)`;
+    requestAnimationFrame(breathe);
+  }
+
+  connect(); animateMouth(); breathe();
+  setTimeout(blink,1000+Math.random()*2000);
+})();
+</script>
+</body>
+</html>
