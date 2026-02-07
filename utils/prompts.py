@@ -11,12 +11,3 @@ agent_prompts = {
         ),
     }
 }
-
-# These are no longer used but kept for backward compatibility
-keywords = ["goal", "architecture"]
-
-agent_slides_2 = [{"Goal": "slide 1"}, {"Architecture": "slide 2"}]
-
-agent_slides_1 = []
-
-agent_slides = []
