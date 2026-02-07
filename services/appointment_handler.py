@@ -24,6 +24,7 @@ from utils.logger import get_custom_logger
 logger = get_custom_logger("appointments")
 
 APPOINTMENTS_FILE = Path("data/appointments.json")
+SUMMARIES_FILE = Path("data/call_summaries.json")
 
 BUSINESS_START_HOUR = 9
 BUSINESS_END_HOUR = 18
@@ -105,6 +106,58 @@ def _get_booked_slots(data: dict, date: str) -> set[str]:
     }
 
 
+# ── Call Summary helpers ─────────────────────────────────────────────────
+
+def _load_summaries() -> dict:
+    """
+    Schema:
+    {
+      "1001": [
+        {"call_id": "abc123", "summary": "...", "timestamp": "..."},
+        ...
+      ]
+    }
+    """
+    if SUMMARIES_FILE.exists():
+        try:
+            return json.loads(SUMMARIES_FILE.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _save_summaries(data: dict):
+    SUMMARIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SUMMARIES_FILE.write_text(json.dumps(data, indent=2, default=str))
+
+
+def save_call_summary(user_id: str, call_id: str, summary: str) -> dict:
+    """Save a call summary for a user. Called after conversation ends."""
+    if not user_id:
+        return {"status": "skipped", "message": "No user identified in this call."}
+    uid = _normalize_id(user_id)
+    data = _load_summaries()
+    if uid not in data:
+        data[uid] = []
+    data[uid].append({
+        "call_id": call_id,
+        "summary": summary,
+        "timestamp": datetime.now().isoformat(),
+    })
+    _save_summaries(data)
+    logger.info("Saved call summary for user %s (call %s)", uid, call_id)
+    return {"status": "saved", "user_id": uid, "call_id": call_id}
+
+
+def get_last_summary(user_id: str) -> dict | None:
+    """Get the most recent call summary for a user."""
+    uid = _normalize_id(user_id)
+    data = _load_summaries()
+    if uid in data and data[uid]:
+        return data[uid][-1]  # most recent
+    return None
+
+
 # ── Tool implementations ────────────────────────────────────────────────
 
 def identify_user(user_id: str) -> dict:
@@ -124,11 +177,13 @@ def identify_user(user_id: str) -> dict:
             a for a in data["appointments"]
             if a["user_id"] == uid and a["status"] == "booked"
         ]
+        last_summary = get_last_summary(uid)
         logger.info("User found: %s (ID: %s), %d appointments", user["name"], uid, len(active))
         return {
             "status": "found",
             "user": user,
             "active_appointments": active,
+            "last_call_summary": last_summary,
             "message": f"Welcome back, {user['name']}! You have {len(active)} active appointment(s)."
         }
     else:

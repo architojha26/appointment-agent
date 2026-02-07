@@ -102,6 +102,31 @@
   .uai-purpose { color: #888; font-size: 11px; }
   .user-no-appts { color: #555; font-size: 12px; font-style: italic; padding: 4px 0; }
 
+  /* ── Last Call Summary (in user card) ─────────────── */
+  .last-summary-section {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    display: none;
+  }
+  .last-summary-section.visible { display: block; }
+  .last-summary-label {
+    font-size: 11px; color: #888; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .last-summary-label .ls-icon { font-size: 12px; }
+  .last-summary-box {
+    background: rgba(99,102,241,0.06);
+    border: 1px solid rgba(99,102,241,0.12);
+    border-radius: 8px; padding: 8px 10px;
+    font-size: 11px; line-height: 1.5; color: #aaa;
+    max-height: 100px; overflow-y: auto;
+  }
+  .last-summary-box::-webkit-scrollbar { width: 3px; }
+  .last-summary-box::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .last-summary-time {
+    font-size: 9px; color: #555; margin-top: 4px; text-align: right;
+  }
+
   /* ── Summary Overlay ────────────────────────────────── */
   .summary-overlay {
     display: none;
@@ -126,6 +151,13 @@
     margin-bottom: 6px; display: flex; align-items: center; gap: 8px;
   }
   .summary-subtitle { font-size: 12px; color: #666; margin-bottom: 16px; }
+  .summary-meta {
+    display: flex; gap: 12px; margin-bottom: 12px;
+  }
+  .summary-meta-item {
+    font-size: 10px; color: #888; background: rgba(255,255,255,0.04);
+    padding: 3px 10px; border-radius: 6px; font-family: monospace;
+  }
   .summary-text {
     font-size: 14px; line-height: 1.7; color: #ccc;
     white-space: pre-line;
@@ -351,6 +383,11 @@
     <div class="user-appt-list" id="userApptList">
       <div class="user-no-appts">No appointments</div>
     </div>
+    <div class="last-summary-section" id="lastSummarySection">
+      <div class="last-summary-label"><span class="ls-icon">📝</span> Last Call Summary</div>
+      <div class="last-summary-box" id="lastSummaryText"></div>
+      <div class="last-summary-time" id="lastSummaryTime"></div>
+    </div>
   </div>
 </div>
 
@@ -371,6 +408,7 @@
   <div class="summary-box">
     <div class="summary-title">📋 Call Summary</div>
     <div class="summary-subtitle">Generated after conversation ended</div>
+    <div class="summary-meta" id="summaryMeta"></div>
     <div class="summary-text" id="summaryText">Loading...</div>
     <button class="summary-close" onclick="document.getElementById('summaryOverlay').classList.remove('visible')">Close</button>
   </div>
@@ -397,9 +435,13 @@
   const userApptLabel = document.getElementById('userApptLabel');
   const summaryOverlay = document.getElementById('summaryOverlay');
   const summaryText = document.getElementById('summaryText');
+  const summaryMeta = document.getElementById('summaryMeta');
   const startOverlay = document.getElementById('startOverlay');
   const startBtn = document.getElementById('startBtn');
   const startWaiting = document.getElementById('startWaiting');
+  const lastSummarySection = document.getElementById('lastSummarySection');
+  const lastSummaryText = document.getElementById('lastSummaryText');
+  const lastSummaryTime = document.getElementById('lastSummaryTime');
 
   let currentEnergy = 0, targetEnergy = 0, toolsFirstCall = true;
   let wsRef = null;  // global WS reference for startConversation()
@@ -474,12 +516,12 @@
         break;
       case 'tool_call':
         renderToolCall(e);
-        // If identify_user found → show user card
+        // If identify_user found → show user card with last summary
         if(e.function==='identify_user' && e.result && e.result.status==='found') {
-          showUserCard(e.result.user, e.result.active_appointments);
+          showUserCard(e.result.user, e.result.active_appointments, e.result.last_call_summary);
         }
         if(e.function==='register_user' && e.result && e.result.status==='registered') {
-          showUserCard({name:e.result.name, user_id:e.result.user_id}, []);
+          showUserCard({name:e.result.name, user_id:e.result.user_id}, [], null);
         }
         // If book/cancel/modify, refresh user appts from tool result if available
         if(['book_appointment','cancel_appointment','modify_appointment'].includes(e.function) && e.result) {
@@ -488,6 +530,12 @@
         break;
       case 'summary':
         summaryText.textContent = e.text || 'No summary available.';
+        // Show meta badges
+        let metaHtml = '';
+        if(e.user_id) metaHtml += `<span class="summary-meta-item">👤 User: ${e.user_id}</span>`;
+        if(e.call_id) metaHtml += `<span class="summary-meta-item">📞 Call: ${e.call_id}</span>`;
+        metaHtml += `<span class="summary-meta-item">🕐 ${new Date().toLocaleString()}</span>`;
+        summaryMeta.innerHTML = metaHtml;
         summaryOverlay.classList.add('visible');
         break;
       case 'conversation_started':
@@ -504,11 +552,24 @@
   // ── User Card ─────────────────────────────────────────
   let currentUserId = null;
 
-  function showUserCard(user, appointments) {
+  function showUserCard(user, appointments, lastSummary) {
     currentUserId = user.user_id;
     userName.textContent = user.name || 'Unknown';
     userIdBadge.textContent = 'ID: ' + user.user_id;
     renderUserAppts(appointments || []);
+
+    // Show last call summary if available
+    if (lastSummary && lastSummary.summary) {
+      lastSummaryText.textContent = lastSummary.summary;
+      if (lastSummary.timestamp) {
+        const d = new Date(lastSummary.timestamp);
+        lastSummaryTime.textContent = d.toLocaleString() + (lastSummary.call_id ? '  •  Call #' + lastSummary.call_id : '');
+      }
+      lastSummarySection.classList.add('visible');
+    } else {
+      lastSummarySection.classList.remove('visible');
+    }
+
     userCard.classList.add('visible');
   }
 
@@ -590,6 +651,12 @@
         body+=kv('Name',r.user.name);
         body+=kv('Active Appts',(r.active_appointments||[]).length);
         (r.active_appointments||[]).forEach(a=>{body+=apptMini(a)});
+        if(r.last_call_summary) {
+          body+=`<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06)">`;
+          body+=`<div style="color:#818cf8;font-size:10px;margin-bottom:3px">📝 Last Call Summary</div>`;
+          body+=`<div style="color:#888;font-size:10px;line-height:1.4">${esc(r.last_call_summary.summary).substring(0,150)}${r.last_call_summary.summary.length>150?'...':''}</div>`;
+          body+=`</div>`;
+        }
       } else { body+=`<div style="color:#fbbf24;font-size:11px">${r.message||'Not found'}</div>`; }
     }
     else if(e.function==='register_user') {

@@ -10,6 +10,7 @@ from stt.azure_stt import SimpleAzureSTT
 from core.llm_handler import ConversationalLLM
 from utils.conversation_logger import ConversationLogger
 from services.conversation_summarizer import ConversationSummarizer
+from services.appointment_handler import save_call_summary
 from utils.logger import get_custom_logger
 
 try:
@@ -100,6 +101,7 @@ async def run_conversation_manager(
     pending_user_text: list[str] = []
     last_stt_time: float | None = None
     last_activity_time = time.time()
+    identified_user_id: str | None = None  # track who's on the call
 
     def avatar_event(evt: dict):
         if avatar_queue is None:
@@ -221,6 +223,15 @@ async def run_conversation_manager(
             if tool_calls:
                 for tc in tool_calls:
                     print(f"[conv_mgr] 🔧 Tool: {tc['function']}({tc['arguments']}) → {tc['result']}")
+
+                    # Track identified user
+                    if tc["function"] == "identify_user" and tc["result"].get("status") == "found":
+                        identified_user_id = tc["result"]["user"]["user_id"]
+                        print(f"[conv_mgr] 👤 Identified user: {identified_user_id}")
+                    elif tc["function"] == "register_user" and tc["result"].get("status") == "registered":
+                        identified_user_id = tc["result"]["user_id"]
+                        print(f"[conv_mgr] 👤 Registered user: {identified_user_id}")
+
                     # Send tool call to avatar UI
                     avatar_event({
                         "type": "tool_call",
@@ -273,8 +284,18 @@ async def run_conversation_manager(
     summary = summarizer.summarize_from_turns(conv_logger.get_turns())
     conv_logger.finalize(summary=summary)
 
-    # Send summary to avatar
-    avatar_event({"type": "summary", "text": summary})
+    # Save summary to call_summaries.json
+    if identified_user_id:
+        save_call_summary(user_id=identified_user_id, call_id=call_id, summary=summary)
+        print(f"[conv_mgr] 💾 Summary saved for user {identified_user_id}")
+
+    # Send summary to avatar (include user_id so frontend can label it)
+    avatar_event({
+        "type": "summary",
+        "text": summary,
+        "user_id": identified_user_id,
+        "call_id": call_id,
+    })
 
     print("\n" + "=" * 60)
     print("📋 CONVERSATION SUMMARY")
