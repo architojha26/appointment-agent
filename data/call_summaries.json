@@ -14,6 +14,11 @@
       "call_id": "c0fc7d73",
       "summary": "CALLER INTENT: The caller wanted to inquire about their active appointments.  \nACTIONS TAKEN: None.  \nKEY DETAILS: The caller's name is Archit Ojha, and they have three active appointments scheduled for February 12, 14, and 16, 2026.  \nOUTCOME: The call ended with the agent providing the requested information.  \nDURATION: 3 turns",
       "timestamp": "2026-02-08T04:39:32.964658"
+    },
+    {
+      "call_id": "1444eb9c",
+      "summary": "CALLER INTENT: The caller wanted to talk to the agent without any specific request.  \nACTIONS TAKEN: None.  \nKEY DETAILS: The caller's name is Archit Ojha, and they have three active appointments scheduled for February 12, 14, and 16, 2026.  \nOUTCOME: The call ended with the caller expressing gratitude and saying goodbye.  \nDURATION: 5 turns.",
+      "timestamp": "2026-02-08T04:49:43.638993"
     }
   ]
 }

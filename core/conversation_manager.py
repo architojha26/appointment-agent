@@ -297,6 +297,9 @@ async def run_conversation_manager(
         "call_id": call_id,
     })
 
+    # Give avatar server time to broadcast summary to browser before shutdown
+    await asyncio.sleep(2)
+
     print("\n" + "=" * 60)
     print("📋 CONVERSATION SUMMARY")
     print("=" * 60)
