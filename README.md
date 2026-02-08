@@ -186,6 +186,7 @@ You will see:
 ```
 
 Open **http://localhost:8765** in your browser → click **Start Conversation** → speak.
+**Note:** Try to use earphones, since its mic stream, in case of speaker, agent voice will be sent back as the user.
 
 ---
 
