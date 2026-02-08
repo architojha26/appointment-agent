@@ -11,6 +11,14 @@
     "3300": {
       "name": "Rahul Verma",
       "user_id": "3300"
+    },
+    "8517": {
+      "name": "Narendra Modi",
+      "user_id": "8517"
+    },
+    "7295": {
+      "name": "Niranjan Potnuru",
+      "user_id": "7295"
     }
   },
   "appointments": [
@@ -74,11 +82,11 @@
       "user_id": "1001",
       "name": "Archit Ojha",
       "date": "2026-02-14",
-      "time": "03:30 PM",
+      "time": "04:30 PM",
       "purpose": "",
       "status": "booked",
       "created_at": "2026-02-08T04:26:35.029605",
-      "modified_at": "2026-02-08T04:38:05.011655"
+      "modified_at": "2026-02-08T15:25:32.833681"
     },
     {
       "appointment_id": "71b01909",
@@ -87,8 +95,63 @@
       "date": "2026-02-16",
       "time": "02:00 PM",
       "purpose": "",
-      "status": "booked",
+      "status": "cancelled",
       "created_at": "2026-02-08T04:27:12.121990",
+      "modified_at": "2026-02-08T15:01:23.693109"
+    },
+    {
+      "appointment_id": "34e1a74c",
+      "user_id": "1001",
+      "name": "Architoja",
+      "date": "2026-02-18",
+      "time": "02:00 PM",
+      "purpose": "",
+      "status": "cancelled",
+      "created_at": "2026-02-08T14:58:35.014845",
+      "modified_at": "2026-02-08T15:24:43.713541"
+    },
+    {
+      "appointment_id": "57b5bfb6",
+      "user_id": "8517",
+      "name": "Narendra Modi",
+      "date": "2025-02-01",
+      "time": "09:00 AM",
+      "purpose": "sightseeing",
+      "status": "booked",
+      "created_at": "2026-02-08T15:06:14.380327",
+      "modified_at": null
+    },
+    {
+      "appointment_id": "6bf0ed83",
+      "user_id": "1001",
+      "name": "Archit Ojha",
+      "date": "2025-02-12",
+      "time": "10:00 AM",
+      "purpose": "",
+      "status": "booked",
+      "created_at": "2026-02-08T15:14:00.283866",
+      "modified_at": null
+    },
+    {
+      "appointment_id": "9cdbbadc",
+      "user_id": "7295",
+      "name": "Niranjan Potnuru",
+      "date": "2026-02-12",
+      "time": "01:30 PM",
+      "purpose": "Clinic checkout",
+      "status": "booked",
+      "created_at": "2026-02-08T15:19:09.401764",
+      "modified_at": null
+    },
+    {
+      "appointment_id": "c3b5ed10",
+      "user_id": "1001",
+      "name": "Archit Ojha",
+      "date": "2026-02-19",
+      "time": "09:00 AM",
+      "purpose": "",
+      "status": "booked",
+      "created_at": "2026-02-08T15:25:13.384110",
       "modified_at": null
     }
   ]

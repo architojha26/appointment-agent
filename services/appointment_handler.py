@@ -88,6 +88,33 @@ def _generate_new_id(data: dict) -> str:
     return f"{random.randint(1000, 9999)}"
 
 
+def _validate_date(date: str) -> dict | None:
+    """
+    Validate date format and ensure it's not in the past.
+    Returns an error dict if invalid, None if OK.
+    """
+    try:
+        requested = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        return {
+            "status": "error",
+            "message": f"Invalid date format: '{date}'. Please use YYYY-MM-DD format."
+        }
+
+    today = datetime.now().date()
+    if requested < today:
+        return {
+            "status": "past_date",
+            "message": (
+                f"Cannot use date {date} — it is in the past. "
+                f"Today is {today.strftime('%Y-%m-%d')}. "
+                f"Please ask the caller for a future date."
+            ),
+            "today": today.strftime("%Y-%m-%d"),
+        }
+    return None
+
+
 def _generate_all_slots(date: str) -> list[str]:
     slots = []
     start = datetime.strptime(f"{date} {BUSINESS_START_HOUR:02d}:00", "%Y-%m-%d %H:%M")
@@ -97,6 +124,26 @@ def _generate_all_slots(date: str) -> list[str]:
         slots.append(current.strftime("%I:%M %p"))
         current += timedelta(minutes=SLOT_DURATION_MINUTES)
     return slots
+
+
+def _generate_available_slots_today(date: str) -> list[str]:
+    """
+    For today's date, only return slots that are still in the future
+    (at least 30 minutes from now).
+    """
+    now = datetime.now()
+    cutoff = now + timedelta(minutes=30)
+    all_slots = _generate_all_slots(date)
+
+    if datetime.strptime(date, "%Y-%m-%d").date() != now.date():
+        return all_slots
+
+    available = []
+    for slot_str in all_slots:
+        slot_dt = datetime.strptime(f"{date} {slot_str}", "%Y-%m-%d %I:%M %p")
+        if slot_dt >= cutoff:
+            available.append(slot_str)
+    return available
 
 
 def _get_booked_slots(data: dict, date: str) -> set[str]:
@@ -211,8 +258,13 @@ def register_user(name: str) -> dict:
 
 def fetch_slots(date: str) -> dict:
     """Return available and booked slots for a given date."""
+    # ── Validate date is not in the past ──
+    date_err = _validate_date(date)
+    if date_err:
+        return date_err
+
     data = _load_db()
-    all_slots = _generate_all_slots(date)
+    all_slots = _generate_available_slots_today(date)
     booked = _get_booked_slots(data, date)
     available = [s for s in all_slots if s not in booked]
 
@@ -231,6 +283,11 @@ def fetch_slots(date: str) -> dict:
 
 def book_appointment(user_id: str, name: str, date: str, time_slot: str, purpose: str = "") -> dict:
     """Book an appointment with conflict checking."""
+    # ── Validate date is not in the past ──
+    date_err = _validate_date(date)
+    if date_err:
+        return date_err
+
     uid = _normalize_id(user_id)
     data = _load_db()
 
@@ -242,6 +299,21 @@ def book_appointment(user_id: str, name: str, date: str, time_slot: str, purpose
             "message": f"'{time_slot}' is not a valid slot. Business hours are 9:00 AM – 6:00 PM, 30-min intervals.",
             "valid_slots_sample": all_slots[:5] + ["..."] + all_slots[-3:]
         }
+
+    # For today, also check that the slot hasn't already passed
+    today = datetime.now().date()
+    requested_date = datetime.strptime(date, "%Y-%m-%d").date()
+    if requested_date == today:
+        slot_dt = datetime.strptime(f"{date} {time_slot}", "%Y-%m-%d %I:%M %p")
+        if slot_dt <= datetime.now() + timedelta(minutes=30):
+            available_today = _generate_available_slots_today(date)
+            booked = _get_booked_slots(data, date)
+            still_open = [s for s in available_today if s not in booked]
+            return {
+                "status": "past_slot",
+                "message": f"The slot {time_slot} today has already passed or is too soon. Please pick a later time.",
+                "suggested_alternatives": still_open[:5],
+            }
 
     # Check global conflict (any user at same slot)
     booked = _get_booked_slots(data, date)
@@ -340,11 +412,22 @@ def modify_appointment(appointment_id: str, new_date: str = "", new_time: str = 
     if not new_date and not new_time:
         return {"status": "error", "message": "Provide a new date or time."}
 
+    # ── Validate new date is not in the past ──
+    if new_date:
+        date_err = _validate_date(new_date)
+        if date_err:
+            return date_err
+
     data = _load_db()
     for a in data["appointments"]:
         if a["appointment_id"] == appointment_id and a["status"] == "booked":
             target_date = new_date or a["date"]
             target_time = new_time or a["time"]
+
+            # Also validate the resolved target date
+            date_err = _validate_date(target_date)
+            if date_err:
+                return date_err
 
             all_slots = _generate_all_slots(target_date)
             if target_time not in all_slots:
@@ -417,11 +500,11 @@ APPOINTMENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "fetch_slots",
-            "description": "Get available appointment slots for a date. ALWAYS call this BEFORE booking to check availability.",
+            "description": "Get available appointment slots for a date. ALWAYS call this BEFORE booking to check availability. Date MUST be today or in the future (YYYY-MM-DD).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "date": {"type": "string", "description": "Date in YYYY-MM-DD format"},
+                    "date": {"type": "string", "description": "Date in YYYY-MM-DD format. Must be today or a future date."},
                 },
                 "required": ["date"],
             },
@@ -431,13 +514,13 @@ APPOINTMENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "book_appointment",
-            "description": "Book a new appointment. MUST call fetch_slots first. time_slot MUST be from available slots.",
+            "description": "Book a new appointment. MUST call fetch_slots first. time_slot MUST be from available slots. Date MUST be today or in the future.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "user_id": {"type": "string", "description": "4-digit user ID"},
                     "name": {"type": "string", "description": "Full name"},
-                    "date": {"type": "string", "description": "Date YYYY-MM-DD"},
+                    "date": {"type": "string", "description": "Date YYYY-MM-DD (must be today or future)"},
                     "time_slot": {"type": "string", "description": "Time slot from fetch_slots (e.g. '10:00 AM')"},
                     "purpose": {"type": "string", "description": "Reason (optional)"},
                 },
@@ -477,12 +560,12 @@ APPOINTMENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "modify_appointment",
-            "description": "Change date/time of an existing appointment.",
+            "description": "Change date/time of an existing appointment. New date must be today or in the future.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "appointment_id": {"type": "string", "description": "8-char appointment ID"},
-                    "new_date": {"type": "string", "description": "New date YYYY-MM-DD (optional)"},
+                    "new_date": {"type": "string", "description": "New date YYYY-MM-DD (optional, must be today or future)"},
                     "new_time": {"type": "string", "description": "New time slot (optional)"},
                 },
                 "required": ["appointment_id"],

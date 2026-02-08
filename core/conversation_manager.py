@@ -24,6 +24,8 @@ logger = get_custom_logger("conversation_manager")
 USER_SILENCE_TIMEOUT = 2.0     # seconds of silence before processing user speech
 END_CONVERSATION_TIMEOUT = 45  # seconds of USER silence before auto-ending
 GOODBYE_TTS_TIMEOUT = 15.0     # max seconds to wait for speaker to finish goodbye
+REENGAGEMENT_TIMEOUT = 10.0     # seconds of silence after agent done before re-engaging
+MAX_REENGAGEMENT_ATTEMPTS = 3  # consecutive re-engagements before auto-ending
 
 
 async def run_conversation_manager(
@@ -41,8 +43,13 @@ async def run_conversation_manager(
     Main conversation loop:
       mic audio → Azure STT → 2s pause → LLM (with tools) → speak command → speaker process
 
+    Re-engagement flow:
+      1. Agent finishes speaking
+      2. If no user speech for 4s → generate contextual re-engagement message
+      3. If 3 consecutive re-engagements → end call with network issue message
+
     End-of-conversation flow:
-      1. Detect end (user says bye / 30s silence)
+      1. Detect end (user says bye / 45s silence / 3 re-engagements)
       2. Send goodbye to speaker
       3. Wait for speaker to finish (poll agent_status_queue)
       4. Break out of mic loop
@@ -103,6 +110,11 @@ async def run_conversation_manager(
     last_activity_time = time.time()
     identified_user_id: str | None = None  # track who's on the call
 
+    # Re-engagement state
+    reengagement_count = 0                    # consecutive re-engagement attempts
+    agent_done_speaking_time: float | None = None  # when agent last finished speaking
+    awaiting_user_response = False            # True after agent speaks, waiting for user
+
     def avatar_event(evt: dict):
         if avatar_queue is None:
             return
@@ -128,12 +140,12 @@ async def run_conversation_manager(
     # Wait for speaker to finish greeting
     _wait_for_ready(agent_status_queue, timeout=15)
     last_activity_time = time.time()  # reset after greeting
+    agent_done_speaking_time = time.time()  # greeting just finished
+    awaiting_user_response = True
     avatar_event({"type": "listening"})
     print("[conv_mgr] ✅ Ready — speak anytime!")
 
     # ── Main conversation loop ───────────────────────────────────────
-    # mic.stream() is a blocking generator — we read chunks via executor
-    # so the event loop stays free for the avatar server (aiohttp).
     loop = asyncio.get_event_loop()
     mic_iter = mic.stream()
 
@@ -169,10 +181,13 @@ async def run_conversation_manager(
                 action = status.get("action")
                 if action == "speaking":
                     agent_is_speaking = True
+                    awaiting_user_response = False
                     last_activity_time = now
                 elif action in ("done_speaking", "interrupted", "ready"):
                     agent_is_speaking = False
                     last_activity_time = now
+                    agent_done_speaking_time = now
+                    awaiting_user_response = True
                     if action in ("done_speaking", "interrupted"):
                         avatar_event({"type": "listening"})
         except queue.Empty:
@@ -192,6 +207,10 @@ async def run_conversation_manager(
                     last_stt_time = now
                     last_activity_time = now
 
+                    # User spoke → reset re-engagement counter
+                    reengagement_count = 0
+                    awaiting_user_response = False
+
                     if agent_is_speaking:
                         stop_event.set()
                         agent_is_speaking = False
@@ -210,6 +229,9 @@ async def run_conversation_manager(
             print(f"[conv_mgr] 👤 User: {full_user_text}")
             conv_logger.log_user(full_user_text)
             avatar_event({"type": "user_speaking", "text": full_user_text})
+
+            # Reset re-engagement state — user just spoke
+            reengagement_count = 0
 
             # LLM response (with function-calling)
             llm_result = llm.get_response(full_user_text)
@@ -242,7 +264,7 @@ async def run_conversation_manager(
 
             # Send to speaker
             stop_event.clear()
-            last_activity_time = time.time()  # reset — agent is responding
+            last_activity_time = time.time()
             try:
                 mp_commands_queue.put_nowait({
                     "action": "speak",
@@ -257,6 +279,64 @@ async def run_conversation_manager(
                 print("[conv_mgr] 👋 End of conversation detected.")
                 _wait_for_speaker_done(agent_status_queue, timeout=GOODBYE_TTS_TIMEOUT)
                 break
+
+        # ── Re-engagement: 4s silence after agent finished speaking ──
+        if (
+            awaiting_user_response
+            and not agent_is_speaking
+            and not pending_user_text
+            and agent_done_speaking_time
+            and (now - agent_done_speaking_time) >= REENGAGEMENT_TIMEOUT
+        ):
+            reengagement_count += 1
+            print(f"[conv_mgr] 🔄 Re-engagement attempt {reengagement_count}/{MAX_REENGAGEMENT_ATTEMPTS}")
+
+            # Check if max attempts reached → end call
+            if reengagement_count >= MAX_REENGAGEMENT_ATTEMPTS:
+                print("[conv_mgr] 📵 Max re-engagements reached — ending call (network issue)")
+                turn_id += 1
+                network_goodbye = (
+                    "I think there might be a network issue as I'm unable to hear you. "
+                    "I'll end the call for now. Please try calling back later. Goodbye!"
+                )
+                conv_logger.log_agent(network_goodbye)
+                avatar_event({"type": "user_speaking", "text": "[no response — network issue]"})
+
+                try:
+                    mp_commands_queue.put_nowait({
+                        "action": "speak",
+                        "text": network_goodbye,
+                        "turn_id": turn_id,
+                    })
+                except Exception:
+                    pass
+                _wait_for_speaker_done(agent_status_queue, timeout=GOODBYE_TTS_TIMEOUT)
+                break
+
+            # Generate contextual re-engagement message via LLM
+            turn_id += 1
+            reengagement_result = llm.get_reengagement_response(attempt=reengagement_count)
+            reengagement_text = reengagement_result["response"]
+
+            print(f"[conv_mgr] 🔄 Re-engagement [{reengagement_count}]: {reengagement_text}")
+            conv_logger.log_agent(reengagement_text)
+
+            # Send to speaker
+            stop_event.clear()
+            last_activity_time = time.time()
+            try:
+                mp_commands_queue.put_nowait({
+                    "action": "speak",
+                    "text": reengagement_text,
+                    "turn_id": turn_id,
+                })
+            except Exception:
+                print("[conv_mgr] ❌ Failed to send re-engagement speak command")
+
+            # Reset timer — agent_done_speaking_time will be updated
+            # when speaker signals done_speaking
+            awaiting_user_response = False
+            agent_done_speaking_time = None
 
         # ── Auto-end on prolonged silence ────────────────────────────
         if (now - last_activity_time) > END_CONVERSATION_TIMEOUT and not agent_is_speaking:

@@ -19,6 +19,50 @@
       "call_id": "1444eb9c",
       "summary": "CALLER INTENT: The caller wanted to talk to the agent without any specific request.  \nACTIONS TAKEN: None.  \nKEY DETAILS: The caller's name is Archit Ojha, and they have three active appointments scheduled for February 12, 14, and 16, 2026.  \nOUTCOME: The call ended with the caller expressing gratitude and saying goodbye.  \nDURATION: 5 turns.",
       "timestamp": "2026-02-08T04:49:43.638993"
+    },
+    {
+      "call_id": "8f559b85",
+      "summary": "CALLER INTENT: The caller wanted to book an appointment on February 18th at 2:00 PM.  \nACTIONS TAKEN: An appointment was booked for Archit Ojha on February 18, 2026, at 2:00 PM with appointment ID 34e1a74c.  \nKEY DETAILS: The caller's name is Archit Ojha, and they have three existing appointments on February 12, 14, and 16, 2026.  \nOUTCOME: The call ended with the caller thanking the agent and the conversation being marked as complete.  \nDURATION: 19 turns",
+      "timestamp": "2026-02-08T14:58:58.872965"
+    },
+    {
+      "call_id": "c37ab73f",
+      "summary": "CALLER INTENT: The caller wanted to cancel an appointment on February 16th.  \nACTIONS TAKEN: The appointment on February 16, 2026, at 2:00 PM was successfully cancelled (Appointment ID: 71b01909).  \nKEY DETAILS: The caller's name is Archit Ojha, and they had four active appointments before the cancellation.  \nOUTCOME: The call ended with the caller thanking the agent and the conversation being marked as complete.  \nDURATION: 9 turns",
+      "timestamp": "2026-02-08T15:01:46.789962"
+    },
+    {
+      "call_id": "7d38c0bc",
+      "summary": "CALLER INTENT: The caller wanted to book an appointment on February 12, 2025.  \nACTIONS TAKEN: An appointment was successfully booked for February 12, 2025, at 10:00 AM (Appointment ID: 6bf0ed83).  \nKEY DETAILS: The caller's name is Archit Ojha, and they specified the date as February 12, 2025, for the appointment.  \nOUTCOME: The call ended with the appointment successfully booked and the agent wishing the caller a great day.  \nDURATION: 11 turns",
+      "timestamp": "2026-02-08T15:14:25.951720"
+    },
+    {
+      "call_id": "fb1c5960",
+      "summary": "CALLER INTENT: The caller wanted assistance regarding their active appointments.  \nACTIONS TAKEN: None.  \nKEY DETAILS: The caller's name is Archit Ojha, and they have four active appointments scheduled.  \nOUTCOME: The call ended due to a network issue, and the agent suggested the caller try again later.  \nDURATION: 6 turns.",
+      "timestamp": "2026-02-08T15:23:19.301695"
+    },
+    {
+      "call_id": "9ba57ecb",
+      "summary": "CALLER INTENT: The caller wanted to cancel an appointment and book a new one.  \nACTIONS TAKEN: Canceled appointment on February 18, 2026 (ID: 34e1a74c) and booked a new appointment on February 19, 2026 at 9:00 AM (ID: c3b5ed10). Modified appointment on February 14, 2026 from 3:30 PM to 4:30 PM (ID: 66c3b78a).  \nKEY DETAILS: The caller's name is Archit Ojha, and they had multiple appointments. They specifically mentioned dates for cancellation and modification.  \nOUTCOME: The call ended successfully after all requests were addressed.  \nDURATION: 25 turns.",
+      "timestamp": "2026-02-08T15:26:09.029299"
+    },
+    {
+      "call_id": "6bd2ebdb",
+      "summary": "CALLER INTENT: The caller wanted to update and change an appointment.  \nACTIONS TAKEN: None.  \nKEY DETAILS: The caller's name is Archit Ojha, and they have four active appointments.  \nOUTCOME: The call ended due to a potential network issue, and the agent suggested the caller try again later.  \nDURATION: 8 turns.",
+      "timestamp": "2026-02-08T15:28:13.594560"
+    }
+  ],
+  "8517": [
+    {
+      "call_id": "aa0bf631",
+      "summary": "CALLER INTENT: The caller wanted to book an appointment.  \nACTIONS TAKEN: An appointment was booked for February 1st, 2025, at 9:00 AM for sightseeing. Appointment ID is 57b5bfb6.  \nKEY DETAILS: The caller's name is Narendra Modi, and the user ID assigned is 8517.  \nOUTCOME: The call ended with the appointment confirmed and no further assistance requested.  \nDURATION: 37 turns",
+      "timestamp": "2026-02-08T15:06:55.344714"
+    }
+  ],
+  "7295": [
+    {
+      "call_id": "04982661",
+      "summary": "CALLER INTENT: The caller wanted to book an appointment.  \nACTIONS TAKEN: An appointment was booked for February 12, 2026, at 1:30 PM with appointment ID 9cdbbadc.  \nKEY DETAILS: The caller's name is Niranjan Potnuru, and the purpose of the visit is a clinic checkout.  \nOUTCOME: The call ended with the appointment successfully booked and the caller expressing gratitude.  \nDURATION: 27 turns",
+      "timestamp": "2026-02-08T15:19:45.100516"
     }
   ]
 }

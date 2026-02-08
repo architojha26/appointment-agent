@@ -35,17 +35,28 @@ Today's date: {today}
 - NO bullet points, NO numbered lists, NO dashes — speak in natural sentences
 - NEVER book without calling fetch_slots first
 - NEVER invent times — only use slots from fetch_slots
+- NEVER book or fetch slots for a past date. Today is {today}. If the user gives a date before today, tell them it's in the past and ask for a future date.
+- If a tool returns a "past_date" error, inform the caller the date is in the past and ask for a valid future date.
 - When user says bye/done/that's all → call end_conversation tool
 - User IDs are 4 digits (like 1234, 5678)
 - Appointment IDs are 8 characters (like a1b2c3d4)
 - Be concise and natural: "Sure!", "Got it!", "Let me check..."
 
 ═══ EXTRACTION ═══
-- Dates: "tomorrow", "next Monday", "12th Feb" → YYYY-MM-DD
+- Dates: "tomorrow", "next Monday", "12th Feb" → YYYY-MM-DD (relative to today: {today})
 - Times: "10 AM", "afternoon" → "10:00 AM", "02:00 PM"
 - IDs: "one two three four" or "1234" → "1234"
+- IMPORTANT: If the user says "February 1st" without a year, assume the NEXT occurrence (current or next year, whichever is in the future). Never default to a past year.
 
 Language: Match caller's language. Default English."""
+
+REENGAGEMENT_PROMPT = """The caller has been silent for a few seconds. Generate a short, natural re-engagement message based on where we are in the conversation.
+
+This is attempt {attempt} of 3. Keep it brief (under 15 words), warm, and contextual.
+- Attempt 1: Gentle nudge — e.g. "Are you still there?" or repeat the last question briefly.
+- Attempt 2: Slightly more direct — e.g. "I'm still here if you need help. Can you hear me okay?"
+
+Do NOT use bullet points. Do NOT repeat exact previous responses. Just one short natural sentence."""
 
 
 class ConversationalLLM:
@@ -127,6 +138,56 @@ class ConversationalLLM:
         except Exception as e:
             logger.exception("LLM error: %s", e)
             return self._fallback(user_text)
+
+    def get_reengagement_response(self, attempt: int = 1) -> dict:
+        """
+        Generate a contextual re-engagement message when the user is silent.
+        Uses conversation history so the nudge is relevant to where we are.
+        """
+        if not self.client:
+            # Fallback re-engagement messages
+            fallbacks = {
+                1: "Are you still there? I'm here to help.",
+                2: "I'm still here. Can you hear me okay?",
+            }
+            text = fallbacks.get(attempt, "Hello? Are you still on the line?")
+            self.messages.append({"role": "assistant", "content": text})
+            return {"response": text, "tool_calls": [], "end_conversation": False}
+
+        try:
+            # Inject a system-level nudge into conversation as a user message
+            # so the LLM has full context of where we are
+            reengagement_instruction = REENGAGEMENT_PROMPT.format(attempt=attempt)
+
+            start = time.time()
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=self.messages + [
+                    {"role": "user", "content": f"[SYSTEM: {reengagement_instruction}]"}
+                ],
+                temperature=0.6,
+                max_tokens=50,
+            )
+            text = (response.choices[0].message.content or "").strip()
+
+            # Add to conversation history as assistant message
+            # (don't add the fake user message — keep history clean)
+            self.messages.append({"role": "assistant", "content": text})
+
+            latency = time.time() - start
+            logger.info("Re-engagement response (%.2fs, attempt %d): %s", latency, attempt, text)
+
+            return {
+                "response": text,
+                "tool_calls": [],
+                "end_conversation": False,
+            }
+
+        except Exception as e:
+            logger.exception("Re-engagement LLM error: %s", e)
+            text = "Are you still there?" if attempt == 1 else "I'm still here if you need help."
+            self.messages.append({"role": "assistant", "content": text})
+            return {"response": text, "tool_calls": [], "end_conversation": False}
 
     def get_summary(self) -> str:
         if not self.client:
