@@ -122,8 +122,7 @@ voice_stack/
 ├── utils/
 │   ├── logger.py                    # Custom logger
 │   ├── conversation_logger.py       # Per-call turn logging
-│   ├── pause_handler.py             # Sentence splitting for TTS chunking
-│   └── preprocess_sentence.py       # Text normalization
+│   └── prompts.py                   # agent prompts
 │
 └── data/
     └── appointments.json            # Appointment database (auto-created with seed data)
